@@ -24,10 +24,12 @@ from rasa.utils.common import TempDirectoryPath
 if typing.TYPE_CHECKING:
     from rasa.importers.importer import TrainingDataImporter
 
-# Type alias for the fingerprint
-Fingerprint = Dict[Text, Union[Text, List[Text], int, float]]
 
 logger = logging.getLogger(__name__)
+
+
+# Type alias for the fingerprint
+Fingerprint = Dict[Text, Union[Text, List[Text], int, float]]
 
 FINGERPRINT_FILE_PATH = "fingerprint.json"
 
@@ -41,7 +43,29 @@ FINGERPRINT_STORIES_KEY = "stories"
 FINGERPRINT_NLU_DATA_KEY = "messages"
 FINGERPRINT_TRAINED_AT_KEY = "trained_at"
 
+
 Section = namedtuple("Section", ["name", "relevant_keys"])
+
+SECTION_CORE = Section(
+    name="Core model",
+    relevant_keys=[
+        FINGERPRINT_CONFIG_KEY,
+        FINGERPRINT_CONFIG_CORE_KEY,
+        FINGERPRINT_DOMAIN_WITHOUT_TEMPLATES_KEY,
+        FINGERPRINT_STORIES_KEY,
+        FINGERPRINT_RASA_VERSION_KEY,
+    ],
+)
+SECTION_NLU = Section(
+    name="NLU model",
+    relevant_keys=[
+        FINGERPRINT_CONFIG_KEY,
+        FINGERPRINT_CONFIG_NLU_KEY,
+        FINGERPRINT_NLU_DATA_KEY,
+        FINGERPRINT_RASA_VERSION_KEY,
+    ],
+)
+SECTION_TEMPLATES = Section(name="Templates", relevant_keys=[FINGERPRINT_TEMPLATES_KEY])
 
 
 def get_model(model_path: Text = DEFAULT_MODELS_PATH) -> TempDirectoryPath:
@@ -338,43 +362,20 @@ def should_retrain(new_fingerprint: Fingerprint, old_model: Text, train_path: Te
 
         old_core, old_nlu = get_model_subdirectories(unpacked)
 
-        templates_section = Section(
-            name="Templates", relevant_keys=[FINGERPRINT_TEMPLATES_KEY]
-        )
-        core_section = Section(
-            name="Core model",
-            relevant_keys=[
-                FINGERPRINT_CONFIG_KEY,
-                FINGERPRINT_CONFIG_CORE_KEY,
-                FINGERPRINT_DOMAIN_WITHOUT_TEMPLATES_KEY,
-                FINGERPRINT_STORIES_KEY,
-                FINGERPRINT_RASA_VERSION_KEY,
-            ],
-        )
-        nlu_section = Section(
-            name="NLU model",
-            relevant_keys=[
-                FINGERPRINT_CONFIG_KEY,
-                FINGERPRINT_CONFIG_NLU_KEY,
-                FINGERPRINT_NLU_DATA_KEY,
-                FINGERPRINT_RASA_VERSION_KEY,
-            ],
-        )
-
         if not section_fingerprint_changed(
-            last_fingerprint, new_fingerprint, templates_section
+            last_fingerprint, new_fingerprint, SECTION_TEMPLATES
         ):
             target_path = os.path.join(train_path, "core")
             replace_templates = not merge_model(old_core, target_path)
 
         if not section_fingerprint_changed(
-            last_fingerprint, new_fingerprint, core_section
+            last_fingerprint, new_fingerprint, SECTION_CORE
         ):
             target_path = os.path.join(train_path, "core")
             retrain_core = not merge_model(old_core, target_path)
 
         if not section_fingerprint_changed(
-            last_fingerprint, new_fingerprint, nlu_section
+            last_fingerprint, new_fingerprint, SECTION_NLU
         ):
             target_path = os.path.join(train_path, "nlu")
             retrain_nlu = not merge_model(old_nlu, target_path)

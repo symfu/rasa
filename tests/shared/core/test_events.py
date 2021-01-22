@@ -9,7 +9,8 @@ from typing import Type, Optional, Text, List, Any, Dict
 
 import rasa.shared.utils.common
 import rasa.shared.core.events
-from rasa.shared.core.constants import ACTION_LISTEN_NAME
+from rasa.shared.exceptions import UnsupportedFeatureException
+from rasa.shared.core.constants import ACTION_LISTEN_NAME, ACTION_SESSION_START_NAME
 from rasa.shared.core.events import (
     Event,
     UserUttered,
@@ -28,8 +29,9 @@ from rasa.shared.core.events import (
     UserUtteranceReverted,
     AgentUttered,
     SessionStarted,
-    md_format_message,
+    format_message,
 )
+from rasa.shared.nlu.constants import INTENT_NAME_KEY
 from tests.core.policies.test_rule_policy import GREET_INTENT_NAME, UTTER_GREET_ACTION
 
 
@@ -319,17 +321,15 @@ def test_user_uttered_intent_name(event: UserUttered, intent_name: Optional[Text
 
 
 def test_md_format_message():
-    assert (
-        md_format_message("Hello there!", intent="greet", entities=[]) == "Hello there!"
-    )
+    assert format_message("Hello there!", intent="greet", entities=[]) == "Hello there!"
 
 
 def test_md_format_message_empty():
-    assert md_format_message("", intent=None, entities=[]) == ""
+    assert format_message("", intent=None, entities=[]) == ""
 
 
 def test_md_format_message_using_short_entity_syntax():
-    formatted = md_format_message(
+    formatted = format_message(
         "I am from Berlin.",
         intent="location",
         entities=[{"start": 10, "end": 16, "entity": "city", "value": "Berlin"}],
@@ -338,7 +338,7 @@ def test_md_format_message_using_short_entity_syntax():
 
 
 def test_md_format_message_using_long_entity_syntax():
-    formatted = md_format_message(
+    formatted = format_message(
         "I am from Berlin in Germany.",
         intent="location",
         entities=[
@@ -469,3 +469,58 @@ def test_split_events(
         assert all(
             isinstance(events[0], event_type_to_split_on) for events in split_events[1:]
         )
+
+
+@pytest.mark.parametrize(
+    "test_events,begin_with_session_start",
+    [
+        # a typical session start
+        (
+            [
+                ActionExecuted(ACTION_SESSION_START_NAME),
+                SessionStarted(),
+                ActionExecuted(ACTION_LISTEN_NAME),
+            ],
+            True,
+        ),
+        # also a session start, but with timestamps
+        (
+            [
+                ActionExecuted(ACTION_SESSION_START_NAME, timestamp=1),
+                SessionStarted(timestamp=2),
+                ActionExecuted(ACTION_LISTEN_NAME, timestamp=3),
+            ],
+            True,
+        ),
+        # providing a single `action_listen` is not a session start
+        ([ActionExecuted(ACTION_LISTEN_NAME, timestamp=3)], False,),
+        # providing a single `action_session_start` is not a session start
+        ([ActionExecuted(ACTION_SESSION_START_NAME)], False,),
+        # providing no events is not a session start
+        ([], False,),
+    ],
+)
+def test_events_begin_with_session_start(
+    test_events: List[Event], begin_with_session_start: bool,
+):
+    assert (
+        rasa.shared.core.events.do_events_begin_with_session_start(test_events)
+        == begin_with_session_start
+    )
+
+
+@pytest.mark.parametrize(
+    "end_to_end_event",
+    [
+        ActionExecuted(action_text="I insist on using Markdown"),
+        UserUttered(text="Markdown is much more readable"),
+        UserUttered(
+            text="but YAML ❤️",
+            intent={INTENT_NAME_KEY: "use_yaml"},
+            use_text_for_featurization=True,
+        ),
+    ],
+)
+def test_print_end_to_end_events_in_markdown(end_to_end_event: Event):
+    with pytest.raises(UnsupportedFeatureException):
+        end_to_end_event.as_story_string()
